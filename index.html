@@ -37,7 +37,7 @@ window._wpemojiSettings = {"baseUrl":"https:\/\/s.w.org\/images\/core\/emoji\/15
 <link rel="stylesheet" id="elementor-pro-css" href="/wp-content/uploads/elementor/css/custom-pro-frontend-lite.min.css?ver=1724364327" media="all">
 <link rel="stylesheet" id="elementor-global-css" href="/wp-content/uploads/elementor/css/global.css?ver=1724364329" media="all">
 <link rel="stylesheet" id="elementor-post-831-css" href="/wp-content/uploads/elementor/css/post-831.css?ver=1724364330" media="all">
-<link rel="stylesheet" id="elementor-post-1460-css" href="/wp-content/uploads/elementor/css/post-1460.css?ver=1724432316" media="all">
+<link rel="stylesheet" id="elementor-post-1460-css" href="/wp-content/uploads/elementor/css/post-1460.css?ver=1724434206" media="all">
 <link rel="stylesheet" id="google-fonts-1-css" href="https://fonts.googleapis.com/css?family=Roboto%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic%7CRoboto+Slab%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic%7COutfit%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic&#038;display=auto&#038;ver=6.6.1" media="all">
 <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin>
 <link rel="https://api.w.org/" href="/wp-json/">
@@ -911,14 +911,36 @@ con Iterando Legal</h2>		</div>
         console.error("No se encontró formulario con el ID");
     } else {
         // Agrega una función para la validación en tiempo real del campo de teléfono
-        const telefonoInput = form.find('[name="form_fields[Chat_Phone]"]');
+        const telefonoInput = form.find('[name="form_fields[chat_phone]"]');
         telefonoInput.on('input', function () {
             // Remueve cualquier carácter que no sea un número
-            $(this).val($(this).val().replace(/\D/g, ''));
+            let valorActual = $(this).val().replace(/\D/g, '');
+            // Asegura que el número comience con 3
+            if (!valorActual.startsWith('3')) {
+                valorActual = '3' + valorActual;
+            }
+            // Limita el número de dígitos a 10
+            if (valorActual.length > 10) {
+                valorActual = valorActual.substring(0, 10);
+            }
+            $(this).val(valorActual);
         });
 
         form.on('submit', function (e) {
             e.preventDefault(); // Evita el envío del formulario por defecto
+
+            // Validar que el número de teléfono tenga 10 dígitos
+            const telefonoValor = telefonoInput.val();
+            if (telefonoValor.length !== 10) {
+                Swal.fire({
+                    title: "Error",
+                    text: "El número de teléfono debe tener exactamente 10 dígitos.",
+                    icon: "error",
+                    confirmButtonColor: "#d33",
+                    confirmButtonText: "Aceptar"
+                });
+                return; // Salir de la función para no enviar el formulario
+            }
 
             // Cerrar el popup de Elementor si está abierto
             const elementorPopup = $('.elementor-popup-modal');
@@ -926,25 +948,12 @@ con Iterando Legal</h2>		</div>
                 elementorPopup.fadeOut();
             }
 
-            // Obtener la fecha y hora actual en un formato legible para humanos (solo hora y minutos, en la zona horaria de Colombia)
-            const currentDate = new Date();
-            const options = { timeZone: 'America/Bogota', hour12: false, hour: 'numeric', minute: 'numeric', year: 'numeric', month: 'numeric', day: 'numeric' };
-            const formattedDateTime = currentDate.toLocaleString('es-CO', options); // Formatear a la hora de Colombia
-
-            // Obtener si el usuario está en móvil o escritorio
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const deviceType = isMobile ? 'Mobile' : 'Escritorio';
-
             // Captura los datos del formulario
             const formData = form.serializeArray();
             const data = {};
             formData.forEach((input) => {
                 data[input.name] = input.value;
             });
-
-            // Agregar la hora y fecha formateadas a los datos del formulario
-            data['dateTime'] = formattedDateTime;
-            data['deviceType'] = deviceType;
 
             // Agregar UTM parameters
             const urlParams = new URLSearchParams(window.location.search);
@@ -1018,12 +1027,29 @@ con Iterando Legal</h2>		</div>
             })
             .then(responseData => {
                 console.log('Respuesta del webhook:', responseData);
+
+                // Enviar evento a Facebook Pixel con el ID específico
+                fbq('track', 'Lead', {
+                    content_name: 'Formulario Enviado',
+                    value: 1.00,
+                    currency: 'USD',
+                    eventID: '868007421429361' // Facebook Pixel ID
+                });
+
+                // Enviar evento a Google Analytics 4 con el ID específico
+                gtag('event', 'Formulario Enviado', {
+                    'send_to': 'G-L4E35LS899', // GA4 Measurement ID
+                    'event_category': 'Formulario',
+                    'event_label': 'Chat_whatsapp_enviado',
+                    'value': 1.00
+                });
+
             })
             .catch(error => {
                 console.error('Error:', error);
             });
 
-            // Enviar evento a Google Analytics cuando se envía el formulario de WhatsApp
+            // Enviar evento a Google Analytics Universal cuando se envía el formulario de WhatsApp
             gtag('event', 'Chat_whatsapp_enviado', {
                 'event_category': 'Formulario',
                 'event_label': 'Chat_whatsapp_enviado',
@@ -1034,9 +1060,10 @@ con Iterando Legal</h2>		</div>
                 'event_category': 'Formulario',
                 'event_label': 'Chat_whatsapp_enviado',
             });
-        }); // Esta línea cierra el método on('submit')
+        });
     }
 })(jQuery);
+
 </script>		</div>
 				</div>
 				</div>
