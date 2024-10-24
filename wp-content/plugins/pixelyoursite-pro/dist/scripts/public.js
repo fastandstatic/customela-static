@@ -86,6 +86,9 @@ if (!String.prototype.trim) {
 
     var isAdsLoad = false;
 
+    let gtm_variables = {};
+    let gtm_datalayername = "dynamicVariable";
+
     var dummyPinterest = function () {
 
         /**
@@ -204,7 +207,11 @@ if (!String.prototype.trim) {
 
         var gtag_loaded = false;
 
+        var gtm_loaded = false;
+
         let isNewSession = checkSession();
+
+        let dataLayerName = null;
 
 
         function loadPixels() {
@@ -226,6 +233,10 @@ if (!String.prototype.trim) {
                     GAds.loadPixel();
                 }
 
+                if (!options.gdpr.analytics_disabled_by_api) {
+                    GTM.loadPixel();
+                }
+
                 if (!options.gdpr.pinterest_disabled_by_api) {
                     Pinterest.loadPixel();
                 }
@@ -244,8 +255,6 @@ if (!String.prototype.trim) {
                     GAds.loadPixel();
                 }
             }
-
-
         }
 
         /**
@@ -455,15 +464,52 @@ if (!String.prototype.trim) {
                         video_id: videoId,
                         video_title: data.title,
                     };
+                    
+                    let disable_watch_video = [];
+
+                    //Custom
+                    if ( options.triggerEventTypes.hasOwnProperty( "video_view" ) ) {
+                        Object.entries( options.triggerEventTypes.video_view ).forEach( function ( [ trigger_id, triggers ] ) {
+                            triggers.forEach( function ( trigger ) {
+                                if ( trigger.type === 'youtube' && trigger.rule === videoId ) {
+
+                                    let pixels = Object.keys( options.triggerEvents[ trigger_id ] );
+                                    for ( let i = 0; i < pixels.length; i++ ) {
+                                        let event = Utils.clone( options.triggerEvents[ trigger_id ][ pixels[ i ] ] );
+
+                                        if ( trigger.disable_watch_video ) {
+                                            disable_watch_video.push( pixels[ i ] );
+                                        }
+
+                                        if ( currentTime >= marks[ trigger.value ] ) {
+                                            event.params[ "progress" ] = key;
+                                            Utils.copyProperties( params, event.params );
+
+                                            if ( event.fired !== true ) {
+                                                if ( Utils.isEventInTimeWindow( event.name, event, 'dyn_' + pixels[ i ] + '_' + trigger_id ) ) {
+                                                    event = Utils.getFormFilledData( event );
+                                                    getPixelBySlag( pixels[ i ] ).fireEvent( event.name, event );
+                                                    options.triggerEvents[ trigger_id ][ pixels[ i ] ].fired = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } )
+                        } )
+                    }
 
                     // Auto
-                    if(options.automatic.enable_video
+                    if( options.automatic.enable_video
                         && options.automatic.enable_youtube
                         && options.dynamicEvents.hasOwnProperty("automatic_event_video")
                     ) {
                         var pixels = Object.keys(options.dynamicEvents.automatic_event_video);
 
                         for (var i = 0; i < pixels.length; i++) {
+                            if ( disable_watch_video.includes( pixels[ i ] ) ) {
+                                continue;
+                            }
                             var event = Utils.clone(options.dynamicEvents.automatic_event_video[pixels[i]]);
                             event.params["progress"] = key
                             Utils.copyProperties(params, event.params)
@@ -585,6 +631,39 @@ if (!String.prototype.trim) {
                             video_title: player.pysVideoTitle,
                         };
 
+                        let disable_watch_video = [];
+
+                        //Custom
+                        if ( options.triggerEventTypes.hasOwnProperty( "video_view" ) ) {
+                            Object.entries( options.triggerEventTypes.video_view ).forEach( function ( [ trigger_id, triggers ] ) {
+                                triggers.forEach( function ( trigger ) {
+                                    if ( trigger.type === 'vimeo' && trigger.rule == player.pysVideoId ) {
+                                        let pixels = Object.keys( options.triggerEvents[ trigger_id ] );
+                                        for ( let i = 0; i < pixels.length; i++ ) {
+                                            let event = Utils.clone( options.triggerEvents[ trigger_id ][ pixels[ i ] ] );
+
+                                            if ( trigger.disable_watch_video ) {
+                                                disable_watch_video.push( pixels[ i ] );
+                                            }
+
+                                            if ( seconds >= player.pysMarks[ trigger.value ] ) {
+                                                event.params[ "progress" ] = key;
+                                                Utils.copyProperties( params, event.params );
+
+                                                if ( event.fired !== true ) {
+                                                    if ( Utils.isEventInTimeWindow( event.name, event, 'dyn_' + pixels[ i ] + '_' + trigger_id ) ) {
+                                                        event = Utils.getFormFilledData( event );
+                                                        getPixelBySlag( pixels[ i ] ).fireEvent( event.name, event );
+                                                        options.triggerEvents[ trigger_id ][ pixels[ i ] ].fired = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } )
+                            } )
+                        }
+
                         // Auto
                         if(options.automatic.enable_video
                             && options.automatic.enable_vimeo
@@ -593,6 +672,10 @@ if (!String.prototype.trim) {
                             var pixels = Object.keys(options.dynamicEvents.automatic_event_video);
 
                             for (var i = 0; i < pixels.length; i++) {
+                                if ( disable_watch_video.includes( pixels[ i ] ) ) {
+                                    continue;
+                                }
+
                                 var event = Utils.clone(options.dynamicEvents.automatic_event_video[pixels[i]]);
                                 event.params["progress"] = key
                                 Utils.copyProperties(params, event.params);
@@ -849,7 +932,7 @@ if (!String.prototype.trim) {
 
                 const url_parts = window.location.href;
                 const url_params = new URLSearchParams(window.location.search);
-                const matchingPixels = ["facebook", "ga", "google_ads", "bing", "pinterest", "tiktok"];
+                const matchingPixels = ["facebook", "ga", "gtm", "google_ads", "bing", "pinterest", "tiktok"];
                 $.each(matchingPixels, function (slug){
                     var module = getPixelBySlag(slug);
                     if(module && module.isEnabled()){
@@ -904,6 +987,9 @@ if (!String.prototype.trim) {
                     Bing[functionName](events[Bing.tag()]);
                  if (events.hasOwnProperty(TikTok.tag()))
                      TikTok[functionName](events[TikTok.tag()]);
+
+                 if (events.hasOwnProperty(GTM.tag()))
+                     GTM[functionName](events[GTM.tag()]);
             },
 
             getQueryValue:function (name){
@@ -952,16 +1038,17 @@ if (!String.prototype.trim) {
                 }
             },
 
-            sendServerAjaxRequest : function(url, data) {
-                jQuery.ajax({
+            sendServerAjaxRequest: function ( url, data ) {
+                jQuery.ajax( {
                     type: 'POST',
                     url: url,
                     data: data,
                     headers: {
                         'Cache-Control': 'no-cache'
                     },
-                    success: function () {},
-                });
+                    success: function () {
+                    },
+                } );
             },
 
             clone: function(obj) {
@@ -1011,6 +1098,30 @@ if (!String.prototype.trim) {
                 return [].slice.call(document.getElementsByTagName(tag));
             },
 
+
+            initializeVideoAPIs: function (options) {
+                let trigger_has_video_YT, trigger_has_video_Vimeo = false;
+                if (options.hasOwnProperty('automatic') && options.automatic.enable_video) {
+                    if ( options.triggerEventTypes.hasOwnProperty( "video_view" ) ) {
+                        Object.entries( options.triggerEventTypes.video_view ).forEach( function ( [ trigger_id, triggers ] ) {
+                            triggers.forEach( function ( trigger ) {
+                                if (trigger.type === 'youtube') {
+                                    trigger_has_video_YT = true;
+                                }
+                                if(trigger.type === 'vimeo'){
+                                    trigger_has_video_Vimeo = true;
+                                }
+                            });
+                        });
+                    }
+                    if(options.automatic.enable_youtube || trigger_has_video_YT){
+                        Utils.initYouTubeAPI();
+                    }
+                    if(options.automatic.enable_vimeo || trigger_has_video_Vimeo){
+                        Utils.initVimeoAPI();
+                    }
+                }
+            },
             /**
              * Load and initialize YouTube API
              *
@@ -1027,55 +1138,51 @@ if (!String.prototype.trim) {
                 }
 
                 // initialize when API is ready
-                window.onYouTubeIframeAPIReady = function () {
+                if ( typeof window.onYouTubeIframeAPIReady !== 'function' ) {
 
-                    // collect all possible YouTube tags
-                    var potentialVideos = Utils.getTagsAsArray('iframe').concat(Utils.getTagsAsArray('embed'));
+                    window.onYouTubeIframeAPIReady = function () {
 
-                    // turn videos into trackable videos with events
-                    for (var i = 0; i < potentialVideos.length; i++) {
-                        var video = potentialVideos[i];
-                        if (tagIsYouTubeVideo(video)) {
-                            var iframe = normalizeYouTubeIframe(video);
-                            addYouTubeEvents(iframe);
-                        } else {
-                            if(tagIsYouTubeAsyncVideo(video)) {
-                                video.addEventListener("load", function(evt) {
-                                    var iframe = normalizeYouTubeIframe(evt.currentTarget);
-                                    addYouTubeEvents(iframe);
-                                });
+                        // collect all possible YouTube tags
+                        var potentialVideos = Utils.getTagsAsArray( 'iframe' ).concat( Utils.getTagsAsArray( 'embed' ) );
+
+                        // turn videos into trackable videos with events
+                        for ( var i = 0; i < potentialVideos.length; i++ ) {
+                            var video = potentialVideos[ i ];
+                            if ( tagIsYouTubeVideo( video ) ) {
+                                var iframe = normalizeYouTubeIframe( video );
+                                addYouTubeEvents( iframe );
+                            } else if ( tagIsYouTubeAsyncVideo( video ) ){
+                                video.addEventListener( "load", function ( evt ) {
+                                    var iframe = normalizeYouTubeIframe( evt.currentTarget );
+                                    addYouTubeEvents( iframe );
+                                } );
                             }
                         }
-                    }
 
+                        var targets = document.querySelectorAll( '.elementor-widget-video .elementor-wrapper' );
 
+                        const config = {
+                            attributes: false,
+                            childList: true,
+                            subtree: true
+                        };
 
-                    var targets = document.querySelectorAll('.elementor-widget-video .elementor-wrapper');
-
-                    const config = {
-                        attributes: false,
-                        childList: true,
-                        subtree: true
-                    };
-
-                    const callback = function(mutationsList, observer) {
-                        for (let mutation of mutationsList) {
-                            if (mutation.type === 'childList') {
-                                for(var m = 0;m<mutation.addedNodes.length;m++) {
-                                    addDynYouTubeVideos(mutation.addedNodes[m]);
+                        const callback = function ( mutationsList, observer ) {
+                            for ( let mutation of mutationsList ) {
+                                if ( mutation.type === 'childList' ) {
+                                    for ( var m = 0; m < mutation.addedNodes.length; m++ ) {
+                                        addDynYouTubeVideos( mutation.addedNodes[ m ] );
+                                    }
                                 }
                             }
+                        };
+                        // observe elementator widget-video and add event when it add iframe
+                        for ( var i = 0; i < targets.length; i++ ) {
+                            const observer = new MutationObserver( callback );
+                            observer.observe( targets[ i ], config );//maybe remove before add
                         }
-                    };
-                    // observe elementator widget-video and add event when it add iframe
-                    for(var i=0;i<targets.length;i++) {
-                        const observer = new MutationObserver(callback);
-                        observer.observe(targets[i], config);//maybe remove before add
                     }
-
-
-                };
-
+                }
             },
 
             /**
@@ -1457,9 +1564,10 @@ if (!String.prototype.trim) {
                 // stopping events propagation, eg. returns false, and our handler will never called
                 // add event to document to support dyn class
                 document.addEventListener('click', function(event) {
-                    var matchedElements = Array.from(document.querySelectorAll(triggers));
-                    var clickedElement = event.target;
-                    var closestMatch = clickedElement.closest(triggers);
+                    let matchedElements = Array.from(document.querySelectorAll(triggers)),
+                        clickedElement = event.target,
+                        closestMatch = clickedElement.closest(triggers);
+
                     if (matchedElements.includes(clickedElement) || closestMatch){
                         Utils.fireTriggerEvent(eventId);
                     }
@@ -1563,6 +1671,44 @@ if (!String.prototype.trim) {
                     Utils.fireTriggerEvent(eventId);
                 });
             },
+
+            setupEmailLinkEvents: function ( events ) {
+
+                $( document ).on( 'click', 'a', function ( event ) {
+                    let url = event.target.getAttribute( 'href' );
+                    if ( url && url.startsWith( 'mailto:' ) ) {
+
+                        let sendEventIds = [],
+                            disabled_for_pixels = [],
+                            disabled_email_action = false;
+
+                        $.each( events, function ( eventId, trigger_group ) {
+                            url = url.replace( 'mailto:', '' );
+                            trigger_group.forEach( function ( triggers ) {
+                                triggers.rules.forEach( function ( trigger ) {
+                                    if ( Utils.compareUrl( url, trigger.value, trigger.rule ) ) {
+                                        sendEventIds.push( eventId );
+                                        if ( triggers.hasOwnProperty( 'disabled_email_link' ) && triggers.disabled_email_link ) {
+                                            disabled_email_action = true;
+                                            if ( options.triggerEvents.hasOwnProperty( eventId ) ) {
+                                                disabled_for_pixels.push( ...Object.keys( options.triggerEvents[ eventId ] ) );
+                                            }
+                                        }
+                                    }
+                                } );
+                            } )
+                        } )
+
+                        if ( sendEventIds.length > 0 ) {
+                            sendEventIds.forEach( function ( sendEventId ) {
+                                Utils.fireTriggerEvent( sendEventId );
+                            } )
+                        }
+                        setupEmailLinks( disabled_for_pixels );
+                    }
+                } )
+            },
+
             /**
              * Events
              */
@@ -1640,9 +1786,17 @@ if (!String.prototype.trim) {
                 }
                 if (events.hasOwnProperty('tiktok')) {
                     event = events.tiktok;
-                    if(Utils.isEventInTimeWindow(event.name,event,"dyn_bing_"+eventId)) {
+                    if(Utils.isEventInTimeWindow(event.name,event,"dyn_tiktok_"+eventId)) {
                         event = Utils.getFormFilledData(event);
                         TikTok.fireEvent(event.name, event);
+                    }
+                }
+
+                if (events.hasOwnProperty('gtm')) {
+                    event = events.gtm;
+                    if(Utils.isEventInTimeWindow(event.name,event,"dyn_gtm_"+eventId)) {
+                        event = Utils.getFormFilledData(event);
+                        GTM.fireEvent(event.name, event);
                     }
                 }
 
@@ -1740,7 +1894,8 @@ if (!String.prototype.trim) {
                         data[ 'ad_user_data' ] = options.gdpr.ad_user_data.enabled ? options.gdpr.ad_user_data.value : 'granted';
                         data[ 'ad_personalization' ] = options.gdpr.ad_personalization.enabled ? options.gdpr.ad_personalization.value : 'granted';
 
-                        gtag( 'consent', 'default', data );
+                        this.dataLayerName = 'dataLayer';
+                        this.loadDefaultConsent( 'consent', 'default', data );
                     }
 
                     gtag('js', new Date());
@@ -1748,6 +1903,43 @@ if (!String.prototype.trim) {
 
                 }
 
+            },
+
+            loadDefaultConsent: function() {
+                window[ this.dataLayerName ].push( arguments );
+            },
+
+            loadGTMScript: function (id) {
+                const domain = options.gtm.gtm_container_domain ?? 'www.googletagmanager.com';
+                const loader = options.gtm.gtm_container_identifier ?? 'gtm';
+                const gtm_auth = options.gtm.gtm_auth ?? ''; // Set this if needed
+                const gtm_preview = options.gtm.gtm_preview ?? ''; // Set this if needed
+                const datalayer_name = options.gtm.gtm_dataLayer_name ?? 'dataLayerPYS';
+
+                (function(w, d, s, l, i) {
+                    w[l] = w[l] || [];
+                    w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+                    const f = d.getElementsByTagName(s)[0];
+                    const j = d.createElement(s);
+                    const dl = l !== 'dataLayer' ? '&l=' + l : '';
+                    j.async = true;
+                    j.src = 'https://' + domain + '/' + loader + '.js?id=' + i + dl;
+                    if (gtm_auth && gtm_preview) {
+                        j.src += '&gtm_auth=' + gtm_auth + '&gtm_preview=' + gtm_preview + '&gtm_cookies_win=x';
+                    }
+                    f.parentNode.insertBefore(j, f);
+                })(window, document, 'script', datalayer_name, id);
+
+                if ( options.google_consent_mode ) {
+                    let data = {};
+                    data[ 'analytics_storage' ] = options.gdpr.analytics_storage.enabled ? options.gdpr.analytics_storage.value : 'granted';
+                    data[ 'ad_storage' ] = options.gdpr.ad_storage.enabled ? options.gdpr.ad_storage.value : 'granted';
+                    data[ 'ad_user_data' ] = options.gdpr.ad_user_data.enabled ? options.gdpr.ad_user_data.value : 'granted';
+                    data[ 'ad_personalization' ] = options.gdpr.ad_personalization.enabled ? options.gdpr.ad_personalization.value : 'granted';
+
+                    this.dataLayerName = datalayer_name;
+                    this.loadDefaultConsent( 'consent', 'default', data );
+                }
             },
 
             /**
@@ -1959,12 +2151,17 @@ if (!String.prototype.trim) {
 
             setupGdprCallbacks: function () {
 
+                var isConcent = false;
+
                 /**
                  * Cookiebot
                  */
                 if (options.gdpr.cookiebot_integration_enabled && typeof Cookiebot !== 'undefined') {
-
+                    isConcent = true;
                     window.addEventListener("CookiebotOnConsentReady", function() {
+
+                        Utils.initializeVideoAPIs(options);
+
                         Utils.manageCookies();
                         if (Cookiebot.consent.marketing) {
                             Facebook.loadPixel();
@@ -1993,10 +2190,13 @@ if (!String.prototype.trim) {
                  * Cookie Notice
                  */
                 if (options.gdpr.cookie_notice_integration_enabled) {
-
+                    isConcent = true;
                     $(document).onFirst('click', '.cn-set-cookie', function () {
 
                         if ($(this).data('cookie-set') === 'accept') {
+
+                            Utils.initializeVideoAPIs(options);
+
                             Facebook.loadPixel();
                             Analytics.loadPixel();
                             GAds.loadPixel();
@@ -2029,8 +2229,9 @@ if (!String.prototype.trim) {
                  * Cookie Law Info
                  */
                 if (options.gdpr.cookie_law_info_integration_enabled) {
-
+                    isConcent = true;
                     $(document).onFirst('click', '#wt-cli-accept-all-btn,#cookie_action_close_header, .cky-btn-accept', function () {
+                        Utils.initializeVideoAPIs(options);
                         setTimeout(function (){
                             var cli_cookie = Cookies.get('cookieyes-consent') ?? Cookies.get('viewed_cookie_policy');
                             if (typeof cli_cookie !== 'undefined') {
@@ -2064,6 +2265,7 @@ if (!String.prototype.trim) {
                  * ConsentMagic
                  */
                 if (options.gdpr.consent_magic_integration_enabled && typeof CS_Data !== "undefined") {
+                    isConcent = true;
                     var test_prefix = CS_Data.test_prefix,
                         cs_refresh_after_consent = false,
                         substring = "cs_enabled_cookie_term";
@@ -2080,6 +2282,9 @@ if (!String.prototype.trim) {
                                 categoryCookie = Number(categoryCookie.replace(/\D+/g,""));
                                 var cs_cookie_val = Cookies.get('cs_enabled_cookie_term'+test_prefix+'_'+categoryCookie);
                                 if(cs_cookie_val == 'yes') {
+
+                                    Utils.initializeVideoAPIs(options);
+
                                     if (categoryCookie === CS_Data.cs_script_cat.facebook) {
                                         Facebook.loadPixel();
                                     }
@@ -2140,6 +2345,9 @@ if (!String.prototype.trim) {
                                 button_action = elm.attr('data-cs_action');
 
                             if(button_action === 'allow_all') {
+
+                                Utils.initializeVideoAPIs(options);
+
                                 Facebook.loadPixel();
                                 Bing.loadPixel();
                                 Analytics.loadPixel();
@@ -2169,6 +2377,7 @@ if (!String.prototype.trim) {
                  * Real Cookie Banner
                  */
                 if (options.gdpr.real_cookie_banner_integration_enabled) {
+                    isConcent = true;
                     var consentApi = window.consentApi;
                     if (consentApi) {
                         consentApi.consent("http", "_ga", "*")
@@ -2187,7 +2396,23 @@ if (!String.prototype.trim) {
                             .then(GAds.loadPixel.bind(GAds), GAds.disable.bind(GAds));
                         consentApi.consent("http", "tt_webid_v2", ".tiktok.com")
                             .then(TikTok.loadPixel.bind(TikTok), TikTok.disable.bind(TikTok));
+
+                        // load WatchVideo event APIs for Auto
+                        /**
+                         * Real Cookie Banner.
+                         */
+                        if(options.hasOwnProperty('automatic') && options.automatic.enable_video && options.automatic.enable_youtube){
+                            consentApi.consent( "http", "CONSENT", ".youtube.com" ).then( Utils.initYouTubeAPI );
+                        }
+
+                        if(options.hasOwnProperty('automatic') && options.automatic.enable_video && options.automatic.enable_vimeo){
+                            consentApi.consent( "http", "player", ".vimeo.com" ).then( Utils.initVimeoAPI );
+                        }
                     }
+                }
+
+                if(!isConcent) {
+                    Utils.initializeVideoAPIs(options);
                 }
 
             },
@@ -2271,11 +2496,11 @@ if (!String.prototype.trim) {
              * Advanced From Data
              */
             saveAdvancedFormData: function ( email, phone, firstName, lastName, override = true ) {
-                
+
                 if ( !options.cookie.disabled_advanced_form_data_cookie ) {
                     let data = Utils.getAdvancedFormData();
                     // Ensure data["address"] is an object
-                    
+
                     if ( email != null ) {
                         if ( !override ) {
                             if ( typeof data[ "email" ] === 'undefined' || !data[ "email" ] ) {
@@ -2284,7 +2509,7 @@ if (!String.prototype.trim) {
                         } else {
                             data[ "email" ] = email;
                         }
-                        
+
                         if ( typeof data[ "emails" ] === 'object' ) {
                             if ( override ) {
                                 data[ "emails" ] = [ email, ...Object.values( data[ "emails" ] ) ];
@@ -2297,7 +2522,7 @@ if (!String.prototype.trim) {
                         data[ "emails" ] = [ ...new Set( data[ "emails" ] ) ];
                         data[ "emails" ] = data[ "emails" ].slice( 0, 3 );
                     }
-                    
+
                     if ( phone != null ) {
                         if ( !override ) {
                             if ( typeof data[ "phone" ] === 'undefined' || !data[ "phone" ] ) {
@@ -2306,7 +2531,7 @@ if (!String.prototype.trim) {
                         } else {
                             data[ "phone" ] = phone;
                         }
-                        
+
                         if ( typeof data[ "phones" ] === 'object' ) {
                             if ( override ) {
                                 data[ "phones" ] = [ phone, ...Object.values( data[ "phones" ] ) ];
@@ -2319,7 +2544,7 @@ if (!String.prototype.trim) {
                         data[ "phones" ] = [ ...new Set( data[ "phones" ] ) ];
                         data[ "phones" ] = data[ "phones" ].slice( 0, 3 );
                     }
-                    
+
                     if ( firstName != null ) {
                         if ( !override ) {
                             if ( typeof data[ "first_name" ] === 'undefined' || !data[ "first_name" ] ) {
@@ -2328,7 +2553,7 @@ if (!String.prototype.trim) {
                         } else {
                             data[ "first_name" ] = firstName;
                         }
-                        
+
                         if ( typeof data[ "fns" ] === 'object' ) {
                             if ( override ) {
                                 data[ "fns" ] = [ firstName, ...Object.values( data[ "fns" ] ) ];
@@ -2341,7 +2566,7 @@ if (!String.prototype.trim) {
                         data[ "fns" ] = [ ...new Set( data[ "fns" ] ) ];
                         data[ "fns" ] = data[ "fns" ].slice( 0, 2 );
                     }
-                    
+
                     if ( lastName != null ) {
                         if ( !override ) {
                             if ( typeof data[ "last_name" ] === 'undefined' || !data[ "last_name" ] ) {
@@ -2350,7 +2575,7 @@ if (!String.prototype.trim) {
                         } else {
                             data[ "last_name" ] = lastName;
                         }
-                        
+
                         if ( typeof data[ "lns" ] === 'object' ) {
                             if ( override ) {
                                 data[ "lns" ] = [ lastName, ...Object.values( data[ "lns" ] ) ];
@@ -2363,24 +2588,27 @@ if (!String.prototype.trim) {
                         data[ "lns" ] = [ ...new Set( data[ "lns" ] ) ];
                         data[ "lns" ] = data[ "lns" ].slice( 0, 2 );
                     }
-                    
+
                     Cookies.set( 'pys_advanced_form_data', JSON.stringify( data ), { expires: 300 } );
                 } else {
                     Cookies.remove( 'pys_advanced_form_data' )
                 }
-                if ( Analytics.isEnabled() ) {
+                if(GTM.isEnabled()){
+                    GTM.updateEnhancedConversionData();
+                }
+                if(Analytics.isEnabled()){
                     Analytics.updateEnhancedConversionData();
                 } else if ( GAds.isEnabled() ) {
                     GAds.updateEnhancedConversionData();
                 }
             },
-            getAdvancedMergeFormData: function () {
+            getAdvancedMergeFormData: function (allways_provided_data = false) {
                 const advanced = Utils.getAdvancedFormData();
                 let mergedData = {},
-                    limit = options.tracking_analytics.use_multiple_provided_data ? 3 : 1,
-                    address_limit = options.tracking_analytics.use_multiple_provided_data ? 2 : 1;
+                    limit = options.tracking_analytics.use_multiple_provided_data || allways_provided_data ? 3 : 1,
+                    address_limit = options.tracking_analytics.use_multiple_provided_data || allways_provided_data ? 2 : 1;
 
-                if ( options.tracking_analytics.use_encoding_provided_data ) {
+                if ( options.tracking_analytics.use_encoding_provided_data || allways_provided_data) {
                     mergedData.sha256_email_address = [];
                     mergedData.sha256_phone_number = [];
                     mergedData.address = [];
@@ -2824,6 +3052,15 @@ if (!String.prototype.trim) {
                                 ajax_event:options.ajax_event
                             };
 
+                            let delay = 0;
+                            Object.keys(sessionStorage).forEach((key) => {
+                                let value = sessionStorage.getItem(key);
+                                if ( key.startsWith( 'wc_fragments_' ) && event.e_id == 'woo_add_to_cart_on_button_click' ) {
+                                    delay = 2000;
+                                }
+                            });
+
+
                             if(event.hasOwnProperty('woo_order')) {
                                 json['woo_order'] = event.woo_order;
                             }
@@ -2836,10 +3073,11 @@ if (!String.prototype.trim) {
                                 || name == 'PageView'
                             ) {
                                 setTimeout(function(){
+                                    delay = delay === 0 ? 500 : delay;
                                     Utils.sendServerAjaxRequest(options.ajaxUrl, json)
-                                },500)
+                                },delay)
                             } else {
-                                Utils.sendServerAjaxRequest(options.ajaxUrl, json)
+                                setTimeout( () => Utils.sendServerAjaxRequest( options.ajaxUrl, json ), delay );
                             }
                         }
                     }
@@ -3063,14 +3301,24 @@ if (!String.prototype.trim) {
                         if(event.hasOwnProperty('edd_order')) {
                             json['edd_order'] = event.edd_order;
                         }
+
+                        let delay = 0;
+                        Object.keys(sessionStorage).forEach((key) => {
+                            let value = sessionStorage.getItem(key);
+                            if ( key.startsWith( 'wc_fragments_' ) && event.e_id == 'woo_add_to_cart_on_button_click' ) {
+                                delay = 2000;
+                            }
+                        });
+
                         if (event.e_id === "automatic_event_internal_link" || event.e_id === "automatic_event_outbound_link") {
-                            setTimeout(() => Utils.sendServerAjaxRequest(options.ajaxUrl, json), 500);
+                            delay = delay === 0 ? 500 : delay;
+                            setTimeout(() => Utils.sendServerAjaxRequest(options.ajaxUrl, json), delay);
                         } else if (event.type != 'static') {
-                            Utils.sendServerAjaxRequest(options.ajaxUrl, json);
+                            setTimeout(() => Utils.sendServerAjaxRequest(options.ajaxUrl, json), delay);
                         }
 
                         if(event.type == 'static' && options.ajaxForServerStaticEvent) {
-                            Utils.sendServerAjaxRequest(options.ajaxUrl, json);
+                            setTimeout(() => Utils.sendServerAjaxRequest(options.ajaxUrl, json), delay);
                         }
                     }
 
@@ -3149,7 +3397,6 @@ if (!String.prototype.trim) {
              * Load pixel's JS
              */
             loadPixel: function () {
-
                 if (initialized || !this.isEnabled() || !Utils.consentGiven('facebook')) {
                     return;
                 }
@@ -3638,7 +3885,6 @@ if (!String.prototype.trim) {
                 }
             },
             loadPixel: function () {
-
                 if (initialized || !this.isEnabled() || !Utils.consentGiven('analytics')) {
                     return;
                 }
@@ -4456,10 +4702,461 @@ if (!String.prototype.trim) {
 
     }(options);
 
+    var GTM = function (options) {
+
+        var initialized = false;
+
+        var datalayer_name = 'dataLayerPYS';
+        /*
+         * @param name
+         * @param data
+         */
+        function fireEvent(name, event) {
+            if(typeof window.pys_event_data_filter === "function" && window.pys_disable_event_filter(name,'gtm')) {
+                return;
+            }
+
+
+            var eventParams = event.params;
+            var data = event.params;
+            var valuesArray = Object.values(event.trackingIds);
+            var ids = valuesArray.filter(function (pixelId) {
+                return !Utils.hideMatchingPixel(pixelId, 'gtm');
+            })
+            Utils.copyProperties(Utils.getRequestParams(), eventParams);
+            var _fireEvent = function (tracking_id,name,params) {
+                if(options.gtm.container_code){
+                    params['send_to'] = tracking_id;
+                }
+
+                if (options.debug) {
+                    var displayName = name.replace(/^CE_/, '');
+                    if (options.gtm.container_code){
+                        console.log('[Google GTM #' + tracking_id + '] ' + displayName, params);
+                    }
+                    else {
+                        console.log('[Google GTM push to "'+datalayer_name+'"] ' + displayName, params);
+                    }
+                }
+                if (params.hasOwnProperty('customParameters')) {
+                    var customParameters = params.customParameters;
+                    delete params.customParameters;
+                    window[datalayer_name].push({'event': name, 'eventModel': params, 'customParameters': customParameters});
+                } else {
+                    window[datalayer_name].push({'event': name, 'eventModel': params});
+                }
+
+            };
+
+            var copyParams = Utils.copyProperties(eventParams, {}); // copy params because mapParamsToGTM can modify it
+
+            var params = mapParamsToGTM(ids,name,copyParams)
+
+            params.event_id = Utils.generateUniqueId(event);
+
+            _fireEvent(ids, name, params);
+        }
+
+        function normalizeEventName(eventName) {
+
+            var matches = {
+                ViewContent: 'view_item',
+                AddToCart: 'add_to_cart',
+                AddToWishList: 'add_to_wishlist',
+                InitiateCheckout: 'begin_checkout',
+                Purchase: 'purchase',
+                Lead: 'generate_lead',
+                CompleteRegistration: 'sign_up',
+                AddPaymentInfo: 'set_checkout_option'
+            };
+
+            return matches.hasOwnProperty(eventName) ? matches[eventName] : eventName;
+
+        }
+
+        function mapParamsToGTM(tag,name,param) {
+            //GA4 automatically collects a number of parameters for all events
+            var hasGTM = false;
+
+            // end
+            if (Array.isArray(tag)) {
+                hasGTM = tag.some(function (element) {
+                    return isGTM(element);
+                });
+            } else if(isGTM(tag)) {
+                // tag является строкой и соответствует GTM
+                hasGTM = true;
+            }
+            if(hasGTM) {
+                delete param.event_category;
+                delete param.event_label;
+                delete param.ecomm_prodid;
+                delete param.ecomm_pagetype;
+                delete param.ecomm_totalvalue;
+
+                delete param.analytics_storage;
+                delete param.ad_storage;
+                delete param.ad_user_data;
+                delete param.ad_personalization;
+
+                if(name === 'search') {
+                    param['search'] = param.search_term;
+                    delete param.search_term;
+                    delete param.dynx_itemid;
+                    delete param.dynx_pagetype;
+                    delete param.dynx_totalvalue;
+                }
+            }
+            return param;
+        }
+
+        function isGTM(tag) {
+            return tag.indexOf('GTM') === 0;
+        }
+        /**
+         * Public API
+         */
+        return {
+            tag: function() {
+                return "gtm";
+            },
+            isEnabled: function () {
+                return options.hasOwnProperty('gtm');
+            },
+            getHidePixel: function(){
+                if(this.isEnabled() && options.gtm.hasOwnProperty('hide_pixels'))
+                {
+                    return options.gtm.hide_pixels;
+                }
+                return [];
+            },
+            disable: function () {
+                initialized = false;
+            },
+            updateEnhancedConversionData : function () {
+                if (!initialized || !this.isEnabled()) {
+                    return;
+                }
+                if(options.hasOwnProperty("tracking_analytics") && options.tracking_analytics.hasOwnProperty("userDataEnable") && options.tracking_analytics.userDataEnable) {
+                    var advanced = Utils.getAdvancedMergeFormData(true);
+                    if (Object.keys(advanced).length > 0) {
+                        window[datalayer_name].push({'user_data' : advanced});
+                    }
+                }
+            },
+            loadPixel: function () {
+
+                if (initialized || !this.isEnabled() || !Utils.consentGiven('analytics')) {
+                    return;
+                }
+                datalayer_name = options.gtm.gtm_dataLayer_name ?? 'dataLayerPYS';
+
+                for (var i = 0; i < options.gtm.trackingIds.length; i++) {
+                    var trackingId = options.gtm.trackingIds[i];
+                    if (!Utils.hideMatchingPixel(trackingId, 'gtm') && options.gtm.container_code) {
+                        Utils.loadGTMScript(trackingId);
+                        break;
+                    }
+                }
+                if(!options.gtm.container_code) {
+                    console.warn && console.warn("[PYS] Google Tag Manager container code placement set to OFF !!!");
+                    console.warn && console.warn("[PYS] Data layer codes are active but GTM container must be loaded using custom coding !!!");
+                }
+
+                if(options.hasOwnProperty("tracking_analytics") && options.tracking_analytics.hasOwnProperty("userDataEnable") && options.tracking_analytics.userDataEnable){
+                    var advanced = Utils.getAdvancedMergeFormData(true);
+                    if(Object.keys(advanced).length > 0){
+                        window[datalayer_name].push({'user_data' : advanced});
+                    }
+                }
+
+
+                var config = {};
+
+                if(options.user_id && options.user_id != 0) {
+                    config.user_id = options.user_id;
+                }
+
+                // Cross-Domain tracking
+
+                var ids = options.gtm.trackingIds.filter(function (pixelId) {
+                    return !Utils.hideMatchingPixel(pixelId, 'gtm');
+                });
+
+
+                initialized = true;
+
+                Utils.fireStaticEvents('gtm');
+            },
+
+            fireEvent: function (name, data) {
+
+                if (!initialized || !this.isEnabled()) {
+                    return false;
+                }
+
+                data.delay = data.delay || 0;
+                data.params = data.params || {};
+
+                if (data.delay === 0) {
+
+                    fireEvent(name, data);
+
+                } else {
+
+                    setTimeout(function (name, params) {
+                        fireEvent(name, params);
+                    }, data.delay * 1000, name, data);
+
+                }
+
+                return true;
+
+            },
+
+            onAdSenseEvent: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onClickEvent: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onWatchVideo: function (event) {
+                if(!event.hasOwnProperty("youtube_disabled")
+                    || !event.youtube_disabled
+                    || event.params.video_type !== "youtube") {
+                    this.fireEvent(event.name, event);
+                }
+            },
+
+            onCommentEvent: function (event) {
+
+                this.fireEvent(event.name, event);
+
+            },
+
+            onFormEvent: function (event) {
+
+                this.fireEvent(event.name, event);
+
+            },
+
+            onDownloadEvent: function (event) {
+
+                this.fireEvent(event.name, event);
+
+            },
+
+            onWooAddToCartOnButtonEvent: function (product_id, prod_info = null) {
+                if(!options.dynamicEvents.woo_add_to_cart_on_button_click.hasOwnProperty(this.tag()))
+                    return;
+                if (window.pysWooProductData.hasOwnProperty(product_id)) {
+                    if (window.pysWooProductData[product_id].hasOwnProperty('gtm')) {
+                        var event = Utils.clone(options.dynamicEvents.woo_add_to_cart_on_button_click[this.tag()]);
+                        Utils.copyProperties(window.pysWooProductData[product_id]['gtm'].params, event.params)
+                        event.trackingIds = window.pysWooProductData[product_id]['gtm']['trackingIds'];
+                        if(prod_info)
+                        {
+                            if(prod_info['pys_list_name_productlist_id'])
+                            {
+                                event.params.items[0]['item_list_id'] = prod_info['pys_list_name_productlist_id']
+                            }
+                            if(prod_info['pys_list_name_productlist_name'])
+                            {
+                                event.params.items[0]['item_list_name'] =prod_info['pys_list_name_productlist_name']
+                            }
+                        }
+                        this.fireEvent(event.name, event);
+                    }
+                }
+
+            },
+
+            onWooAddToCartOnSingleEvent: function (product_id, qty, product_type, is_external, $form, prod_info) {
+                window.pysWooProductData = window.pysWooProductData || [];
+
+                if(!options.dynamicEvents.woo_add_to_cart_on_button_click.hasOwnProperty(this.tag()))
+                    return;
+                var event = Utils.clone(options.dynamicEvents.woo_add_to_cart_on_button_click[this.tag()]);
+
+                if (product_type === Utils.PRODUCT_VARIABLE && !options.gtm.wooVariableAsSimple) {
+                    product_id = parseInt($form.find('input[name="variation_id"]').val());
+                }
+
+                if (window.pysWooProductData.hasOwnProperty(product_id)) {
+                    if (window.pysWooProductData[product_id].hasOwnProperty('gtm')) {
+
+                        Utils.copyProperties(window.pysWooProductData[product_id]['gtm'].params, event.params);
+
+
+                        if(product_type === Utils.PRODUCT_GROUPED ) {
+                            var groupValue = 0;
+                            $form.find(".woocommerce-grouped-product-list .qty").each(function(index){
+                                var childId = $(this).attr('name').replaceAll("quantity[","").replaceAll("]","");
+                                var quantity = parseInt($(this).val());
+                                if(isNaN(quantity)) {
+                                    quantity = 0;
+                                }
+                                var childItem = window.pysWooProductData[product_id]['gtm'].grouped[childId];
+                                event.params.items.forEach(function(el,index,array) {
+                                    if(el.id == childItem.content_id) {
+                                        if(quantity > 0){
+                                            el.quantity = quantity;
+                                            el.price = childItem.price;
+                                        } else {
+                                            array.splice(index, 1);
+                                        }
+                                    }
+                                });
+                                groupValue += childItem.price * quantity;
+                            });
+
+                            if(options.woo.addToCartOnButtonValueEnabled &&
+                                options.woo.addToCartOnButtonValueOption !== 'global' &&
+                                event.params.hasOwnProperty('value')) {
+                                event.params.value = groupValue;
+                            }
+
+                            if(groupValue == 0) return; // skip if no items selected
+                        } else {
+                            // update items qty param
+                            event.params.items[0].quantity = qty;
+                        }
+
+                        // maybe customize value option
+                        if (options.woo.addToCartOnButtonValueEnabled &&
+                            options.woo.addToCartOnButtonValueOption !== 'global' &&
+                            product_type !== Utils.PRODUCT_GROUPED)
+                        {
+                            if(event.params.hasOwnProperty('value')) {
+                                event.params.value = event.params.items[0].price * qty;
+                            }
+                        }
+
+                        if(prod_info)
+                        {
+                            if(prod_info['pys_list_name_productlist_id'])
+                            {
+                                event.params.items[0]['item_list_id'] = prod_info['pys_list_name_productlist_id']
+                            }
+                            if(prod_info['pys_list_name_productlist_name'])
+                            {
+                                event.params.items[0]['item_list_name'] =prod_info['pys_list_name_productlist_name']
+                            }
+                        }
+
+                        var eventName = is_external ? options.woo.affiliateEventName : event.name;
+                        eventName = normalizeEventName(eventName);
+
+                        this.fireEvent(eventName, event);
+
+                    }
+                }
+
+            },
+
+            onWooCheckoutProgressStep: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onWooSelectContent: function (event) {
+                const select_prod_list = {};
+
+                if (event.params.items[0].item_list_name !== undefined) {
+                    select_prod_list.list_name = event.params.items[0].item_list_name;
+                }
+
+                if (event.params.items[0].item_list_id !== undefined) {
+                    select_prod_list.list_id = event.params.items[0].item_list_id;
+                }
+                const url = new URL(window.location.href);
+                select_prod_list.url = url.origin + url.pathname;
+                Cookies.set('select_prod_list', JSON.stringify(select_prod_list), { expires: 1 });
+                this.fireEvent(event.name, event);
+            },
+
+            onWooRemoveFromCartEvent: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onWooAffiliateEvent: function (product_id) {
+                if(!options.dynamicEvents.woo_affiliate.hasOwnProperty(this.tag()))
+                    return;
+                var event = options.dynamicEvents.woo_affiliate[this.tag()];
+
+                if (window.pysWooProductData.hasOwnProperty(product_id)) {
+                    if (window.pysWooProductData[product_id].hasOwnProperty('gtm')) {
+
+                        event = Utils.clone(event );
+                        Utils.copyProperties(window.pysWooProductData[product_id][this.tag()], event.params)
+                        this.fireEvent(normalizeEventName(options.woo.affiliateEventName), event);
+
+                    }
+                }
+
+            },
+
+            onWooPayPalEvent: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onEddAddToCartOnButtonEvent: function (download_id, price_index, qty) {
+                if(!options.dynamicEvents.edd_add_to_cart_on_button_click.hasOwnProperty(this.tag()))
+                    return;
+                var event = Utils.clone(options.dynamicEvents.edd_add_to_cart_on_button_click[this.tag()]);
+
+
+                if (window.pysEddProductData.hasOwnProperty(download_id)) {
+
+                    var index;
+
+                    if (price_index) {
+                        index = download_id + '_' + price_index;
+                    } else {
+                        index = download_id;
+                    }
+
+                    if (window.pysEddProductData[download_id].hasOwnProperty(index)) {
+                        if (window.pysEddProductData[download_id][index].hasOwnProperty('gtm')) {
+
+                            Utils.copyProperties(window.pysEddProductData[download_id][index]['gtm'].params, event.params);
+
+                            // update items qty param
+                            event.params.items[0].quantity = qty;
+
+                            this.fireEvent(event.name,event);
+
+                        }
+                    }
+
+                }
+
+            },
+
+            onEddRemoveFromCartEvent: function (event) {
+                this.fireEvent(event.name, event);
+            },
+
+            onPageScroll: function (event) {
+                if (initialized && this.isEnabled()) {
+                    this.fireEvent(event.name, event);
+                }
+            },
+            onTime: function (event) {
+                if (initialized && this.isEnabled()) {
+                    this.fireEvent(event.name, event);
+                }
+            },
+        };
+
+    }(options);
+
     window.pys = window.pys || {};
     window.pys.Facebook = Facebook;
     window.pys.Analytics = Analytics;
     window.pys.GAds = GAds;
+    window.pys.GTM = GTM;
     window.pys.Utils = Utils;
     window.pys.TikTok = TikTok;
 
@@ -4749,16 +5446,11 @@ if (!String.prototype.trim) {
 
 
                     //Email Event
-                    if (href.startsWith('mailto:')) {
-                        if(options.dynamicEvents.hasOwnProperty("automatic_event_email_link")) {
-                            var pixels = Object.keys(options.dynamicEvents.automatic_event_email_link);
-                            for(var i = 0;i<pixels.length;i++) {
-                                var event = Utils.clone(options.dynamicEvents.automatic_event_email_link[pixels[i]]);
-                                if ( pixels[i] !== 'tiktok') {
-                                    Utils.copyProperties(Utils.getRequestParams(), event.params);
-                                }
-                                getPixelBySlag(pixels[i]).fireEvent(event.name, event);
-                            }
+                    if ( href.startsWith( 'mailto:' ) ) {
+                        if ( options.triggerEventTypes.hasOwnProperty( "email_link" ) ) {
+                            return;
+                        } else {
+                            setupEmailLinks();
                         }
 
                         return; // not fire next
@@ -5017,9 +5709,16 @@ if (!String.prototype.trim) {
                     case 'comment':
                         Utils.setupCommentEvents(eventId, triggers);
                         break;
+                    case 'video_view':
+                        //@see: Utils.checkYouTubeCompletion() and Utils.addYouTubeEvents()
+                        break;
                 }
 
             });
+
+            if ( triggerType == "email_link" ) {
+                Utils.setupEmailLinkEvents( events )
+            }
 
         });
 
@@ -5091,6 +5790,7 @@ if (!String.prototype.trim) {
                     if (typeof product_id !== 'undefined') {
                         Facebook.onWooAddToCartOnButtonEvent(product_id,$(this));
                         Analytics.onWooAddToCartOnButtonEvent(product_id, $prod_info);
+                        GTM.onWooAddToCartOnButtonEvent(product_id, $prod_info);
                         GAds.onWooAddToCartOnButtonEvent(product_id);
                         Pinterest.onWooAddToCartOnButtonEvent(product_id);
                         Bing.onWooAddToCartOnButtonEvent(product_id);
@@ -5155,6 +5855,7 @@ if (!String.prototype.trim) {
 
                     Facebook.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form);
                     Analytics.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form, $prod_info);
+                    GTM.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form, $prod_info);
                     GAds.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form);
                     Pinterest.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form);
                     Bing.onWooAddToCartOnSingleEvent(product_id, qty, product_type, is_external, $form);
@@ -5191,6 +5892,7 @@ if (!String.prototype.trim) {
                     if (typeof product_id !== 'undefined') {
                         Facebook.onWooAffiliateEvent(product_id);
                         Analytics.onWooAffiliateEvent(product_id);
+                        GTM.onWooAffiliateEvent(product_id);
                         GAds.onWooAffiliateEvent(product_id);
                         Pinterest.onWooAffiliateEvent(product_id);
                         Bing.onWooAffiliateEvent(product_id);
@@ -5283,7 +5985,12 @@ if (!String.prototype.trim) {
                 for (var i = 0; i < eventTypes.length; i++) {
                     var eventType = eventTypes[i];
                     if (options.dynamicEvents.hasOwnProperty(eventType) && options.dynamicEvents[eventType].hasOwnProperty(productId)) {
-                        Analytics.onWooSelectContent(options.dynamicEvents[eventType][productId][Analytics.tag()]);
+                        if(Analytics.isEnabled()){
+                            Analytics.onWooSelectContent(options.dynamicEvents[eventType][productId][Analytics.tag()]);
+                        }
+                        if(GTM.isEnabled()){
+                            GTM.onWooSelectContent(options.dynamicEvents[eventType][productId][GTM.tag()]);
+                        }
                         isEventFired = true;
                         break;
                     }
@@ -5388,6 +6095,7 @@ if (!String.prototype.trim) {
 
                         Facebook.onEddAddToCartOnButtonEvent(download_id, price_index, q);
                         Analytics.onEddAddToCartOnButtonEvent(download_id, price_index, q);
+                        GTM.onEddAddToCartOnButtonEvent(download_id, price_index, q);
                         GAds.onEddAddToCartOnButtonEvent(download_id, price_index, q);
                         Pinterest.onEddAddToCartOnButtonEvent(download_id, price_index, q);
                         Bing.onEddAddToCartOnButtonEvent(download_id, price_index, q);
@@ -5497,6 +6205,12 @@ if (!String.prototype.trim) {
                 if ($form.hasClass('wsf-form') ) {
                     return;
                 }
+
+                // exclude WS form forms
+                if ( $form.hasClass( 'elementor-form' ) ) {
+                    return;
+                }
+
                 if(!options.enable_success_send_form) {
                     var params = {
                         form_id: $form.attr('id'),
@@ -5530,274 +6244,219 @@ if (!String.prototype.trim) {
                 wpcf7.init(jQuery(".wpcf7-form")[i]);
             }
         });
-        document.addEventListener( 'wpcf7mailsent', function( event ) {
-            var form_id = event.detail.contactFormId;
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('CF7'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.CF7)[0];
-                if(options.triggerEventTypes.CF7[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.CF7[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.CF7, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
-            }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
 
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
+        document.addEventListener( 'wpcf7mailsent', function ( event ) {
+            let form_id = event.detail.contactFormId,
+                sendEventId = null,
+                disabled_form_action = false;
+            if ( options.triggerEventTypes.hasOwnProperty( 'CF7' ) ) {
+                $.each( options.triggerEventTypes.CF7, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                sendEventId = eventId;
+                                disabled_form_action = trigger.disabled_form_action;
+                            }
+                        } )
+                    } );
+                } );
             }
-            else {
-                sendFormAction($(event.target), form_id);
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
             }
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+
         }, false );
 
-
         //GravityForm
-        jQuery(document).on('gform_confirmation_loaded', function(event, formId){
-            var form_id = formId;
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('gravity'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.gravity)[0];
-                if(options.triggerEventTypes.gravity[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.gravity[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.gravity, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
+        jQuery( document ).on( 'gform_confirmation_loaded', function ( event, formId ) {
+            let form_id = formId,
+                sendEventId = null,
+                disabled_form_action = false;
+            if ( options.triggerEventTypes.hasOwnProperty( 'gravity' ) ) {
+                $.each( options.triggerEventTypes.gravity, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                disabled_form_action = trigger.disabled_form_action;
+                                sendEventId = eventId;
+                            }
+                        } )
+                    } );
+                } );
             }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
 
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
             }
-            else {
-                sendFormAction($(event.target), form_id);
-            }
-            jQuery(document).off('gform_confirmation_loaded');
-        });
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+            jQuery( document ).off( 'gform_confirmation_loaded' );
+        } );
         //Forminator
-        $(document).on( 'forminator:form:submit:success', function( event ){
-            var form_id = $(event.target).find('input[name="form_id"]').val();
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('forminator'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.forminator)[0];
-                if(options.triggerEventTypes.forminator[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.forminator[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.forminator, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
-            }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
+        $( document ).on( 'forminator:form:submit:success', function ( event ) {
 
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
+            let form_id = $( event.target ).find( 'input[name="form_id"]' ).val(),
+                sendEventId = null,
+                disabled_form_action = false;
+            if ( options.triggerEventTypes.hasOwnProperty( 'forminator' ) ) {
+                $.each( options.triggerEventTypes.forminator, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                disabled_form_action = trigger.disabled_form_action;
+                                sendEventId = eventId;
+                            }
+                        } )
+                    } );
+                } );
             }
-            else {
-                sendFormAction($(event.target), form_id);
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
             }
-
-        });
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+        } );
 
         //WPForm
-        $('form.wpforms-form').on('wpformsAjaxSubmitSuccess', (event) => {
-            var form_id = $(event.target).attr('data-formid');
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('wpforms'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.wpforms)[0];
-                if(options.triggerEventTypes.wpforms[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.wpforms[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.wpforms, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
-            }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
+        $( 'form.wpforms-form' ).on( 'wpformsAjaxSubmitSuccess', ( event ) => {
 
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
-            }
-            else {
-                sendFormAction($(event.target), form_id);
-            }
-        })
-        $(document).on( 'frmFormComplete', function( event, form, response ) {
-            const form_id = $(form).find('input[name="form_id"]').val();
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('formidable'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.formidable)[0];
-                if(options.triggerEventTypes.formidable[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.formidable[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.formidable, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
-            }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
+            let form_id = $( event.target ).attr( 'data-formid' ),
+                sendEventId = null,
+                disabled_form_action = false;
 
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
+            if ( options.triggerEventTypes.hasOwnProperty( 'wpforms' ) ) {
+                $.each( options.triggerEventTypes.wpforms, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                sendEventId = eventId;
+                                disabled_form_action = trigger.disabled_form_action;
+                            }
+                        } )
+                    } );
+                } );
             }
-            else {
-                sendFormAction($(event.target), form_id);
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
             }
-        });
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+        } )
+
+        $( document ).on( 'frmFormComplete', function ( event, form, response ) {
+            const form_id = $( form ).find( 'input[name="form_id"]' ).val();
+            let sendEventId = null,
+                disabled_form_action = false;
+            if ( options.triggerEventTypes.hasOwnProperty( 'formidable' ) ) {
+                $.each( options.triggerEventTypes.formidable, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                disabled_form_action = trigger.disabled_form_action;
+                                sendEventId = eventId;
+                            }
+                        } )
+                    } );
+                } );
+            }
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
+            }
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+
+        } );
+
         // Ninja Forms
-        $(document).onFirst('nfFormSubmitResponse', function (event, data) {
+        $( document ).onFirst( 'nfFormSubmitResponse', function ( event, data ) {
             const form_id = data.response.data.form_id;
-            var sendEventId = null;
-            var disabled_form_action = false;
-            if(options.triggerEventTypes.hasOwnProperty('ninjaform'))
-            {
-                key_event = Object.keys(options.triggerEventTypes.ninjaform)[0];
-                if(options.triggerEventTypes.ninjaform[key_event].hasOwnProperty('disabled_form_action'))
-                {
-                    disabled_form_action = options.triggerEventTypes.ninjaform[key_event].disabled_form_action;
-                }
-                $.each(options.triggerEventTypes.ninjaform, function (eventId, triggers) {
-                    $.each(triggers.forms, function (index, value) {
-                        if(value == form_id) {
-                            sendEventId=eventId;
-                        };
-                    });
-                });
+            let sendEventId = null,
+                disabled_form_action = false;
+            if ( options.triggerEventTypes.hasOwnProperty( 'ninjaform' ) ) {
+                $.each( options.triggerEventTypes.ninjaform, function ( eventId, triggers ) {
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                disabled_form_action = trigger.disabled_form_action;
+                                sendEventId = eventId;
+                            }
+                        } )
+                    } );
+                } );
             }
-            if(sendEventId != null)
-            {
-                Utils.fireTriggerEvent(sendEventId);
-
-                if(!disabled_form_action)
-                {
-                    sendFormAction($(event.target), form_id);
-                }
+            if ( sendEventId != null ) {
+                Utils.fireTriggerEvent( sendEventId );
             }
-            else {
-                sendFormAction($(event.target), form_id);
-            }
-        });
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+        } );
 
-        var fluentForms = $('form.frm-fluent-form');
-        fluentForms.each(function() {
-            var $form = $(this);
-            $form.on('fluentform_submission_success', function(event) {
-                var $formItem = $(this);
-                var form_id = $formItem.attr('data-form_id');
-                var sendEventId = null;
-                var disabled_form_action = false;
-                if(options.triggerEventTypes.hasOwnProperty('fluentform'))
-                {
-                    key_event = Object.keys(options.triggerEventTypes.fluentform)[0];
-                    if(options.triggerEventTypes.fluentform[key_event].hasOwnProperty('disabled_form_action'))
-                    {
-                        disabled_form_action = options.triggerEventTypes.fluentform[key_event].disabled_form_action;
-                    }
-                    $.each(options.triggerEventTypes.fluentform, function (eventId, triggers) {
-                        $.each(triggers.forms, function (index, value) {
-                            if(value == form_id) {
-                                sendEventId=eventId;
-                            };
-                        });
-                    });
+        var fluentForms = $( 'form.frm-fluent-form' );
+        fluentForms.each( function () {
+            var $form = $( this );
+            $form.on( 'fluentform_submission_success', function ( event ) {
+                let $formItem = $( this ),
+                    form_id = $formItem.attr( 'data-form_id' ),
+                    sendEventId = null,
+                    disabled_form_action = false;
+                if ( options.triggerEventTypes.hasOwnProperty( 'fluentform' ) ) {
+                    $.each( options.triggerEventTypes.fluentform, function ( eventId, triggers ) {
+                        $.each( triggers, function ( index, trigger ) {
+                            $.each( trigger.forms, function ( i, value ) {
+                                if ( value == form_id ) {
+                                    disabled_form_action = trigger.disabled_form_action;
+                                    sendEventId = eventId;
+                                }
+                            } )
+                        } );
+                    } );
                 }
-                if(sendEventId != null)
-                {
-                    Utils.fireTriggerEvent(sendEventId);
 
-                    if(!disabled_form_action)
-                    {
-                        sendFormAction($(event.target), form_id);
-                    }
+                if ( sendEventId != null ) {
+                    Utils.fireTriggerEvent( sendEventId );
                 }
-                else {
-                    sendFormAction($(event.target), form_id);
-                }
-            });
-        });
+                sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+            } );
+        } );
 
         //WSForm
         $( document ).on( 'wsf-submit-complete', ( event, form_object, form_id ) => {
             let sendEventId = null,
                 disabled_form_action = false;
             if ( options.triggerEventTypes.hasOwnProperty( 'wsform' ) ) {
-                let key_event = Object.keys( options.triggerEventTypes.wsform )[ 0 ];
-
-                if ( options.triggerEventTypes.wsform[ key_event ].hasOwnProperty( 'disabled_form_action' ) ) {
-                    disabled_form_action = options.triggerEventTypes.wsform[ key_event ].disabled_form_action;
-                }
                 $.each( options.triggerEventTypes.wsform, function ( eventId, triggers ) {
-                    $.each( triggers.forms, function ( index, value ) {
-                        if ( value == form_id ) {
-                            sendEventId = eventId;
-                        }
+                    $.each( triggers, function ( index, trigger ) {
+                        $.each( trigger.forms, function ( i, value ) {
+                            if ( value == form_id ) {
+                                disabled_form_action = trigger.disabled_form_action;
+                                sendEventId = eventId;
+                            }
+                        } )
                     } );
                 } );
             }
+
             if ( sendEventId != null ) {
                 Utils.fireTriggerEvent( sendEventId );
-
-                if ( !disabled_form_action ) {
-                    sendFormAction( $( event.target ), form_id );
-                }
-            } else {
-                sendFormAction( $( event.target ), form_id );
             }
+            sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
         } )
+
+        // Elementor Forms
+        let forms = document.querySelectorAll( '.elementor-form' );
+        // Apply the observer to each form
+        forms.forEach( function ( form ) {
+            observeElementorForm( form );
+        } );
+
+        // watching Elementor Popup forms
+        let observer = new MutationObserver( function ( mutationsList, observer ) {
+            for ( let i = 0; i < mutationsList.length; i++ ) {
+                let popupForm = document.querySelector( '[class*="elementor-popup"] form' );
+                if ( popupForm ) {
+                    observeElementorForm( popupForm );
+                    observer.disconnect();
+                    break;
+                }
+            }
+        } );
+        observer.observe( document.body, { childList: true, subtree: true } );
 
         // load pixel APIs
         Utils.loadPixels();
@@ -5809,30 +6468,9 @@ if (!String.prototype.trim) {
     });
 
 
-    // load WatchVideo event APIs for Auto
-    if (options.automatic.enable_video) {
-        /**
-         * Real Cookie Banner.
-         */
-        var consentApi = window.consentApi;
-        if (consentApi && options.gdpr.real_cookie_banner_integration_enabled) {
-            if (options.automatic.enable_youtube && options.enable_event_video && options.enable_automatic_events) {
-                window.consentApi.consent("http", "CONSENT", ".youtube.com").then(Utils.initYouTubeAPI);
-            }
-            if (options.automatic.enable_vimeo && options.enable_event_video && options.enable_automatic_events) {
-                window.consentApi.consent("http", "player", ".vimeo.com").then(Utils.initVimeoAPI);
-            }
-        }else{
-            if (options.automatic.enable_youtube && options.enable_event_video && options.enable_automatic_events) {
-                Utils.initYouTubeAPI();
-            }
-            if (options.automatic.enable_vimeo && options.enable_event_video && options.enable_automatic_events) {
-                Utils.initVimeoAPI();
-            }
-        }
-    }
 
-    var sendFormAction = function (form_target, formId){
+
+    var sendFormAction = function (form_target, formId, customEventId = null, disabled = false){
         var params = {
                 form_id: formId,
                 text: form_target.find('[type="submit"]').is('input') ? form_target.find('[type="submit"]').val() :
@@ -5843,6 +6481,10 @@ if (!String.prototype.trim) {
             if (options.dynamicEvents.hasOwnProperty("automatic_event_form")) {
                 var pixels = Object.keys(options.dynamicEvents.automatic_event_form);
                 for (var i = 0; i < pixels.length; i++) {
+
+                    if ( disabled && customEventId && typeof options.triggerEvents[customEventId][pixels[i]] !== 'undefined') {
+                        continue;
+                    }
                     var event = options.dynamicEvents.automatic_event_form[pixels[i]];
                     if (pixels[i] === "tiktok") {
                         getPixelBySlag(pixels[i]).fireEvent(event.name, event);
@@ -5855,6 +6497,69 @@ if (!String.prototype.trim) {
             }
     }
 
+    var setupEmailLinks = function ( disabled_for_pixels = [] ) {
+        if ( options.dynamicEvents.hasOwnProperty( "automatic_event_email_link" ) ) {
+            var pixels = Object.keys( options.dynamicEvents.automatic_event_email_link );
+            for ( var i = 0; i < pixels.length; i++ ) {
+                if ( disabled_for_pixels.indexOf(pixels[ i ]) === -1 ) {
+                    var event = Utils.clone( options.dynamicEvents.automatic_event_email_link[ pixels[ i ] ] );
+                    if ( pixels[ i ] !== 'tiktok' ) {
+                        Utils.copyProperties( Utils.getRequestParams(), event.params );
+                    }
+                    getPixelBySlag( pixels[ i ] ).fireEvent( event.name, event );
+                }
+            }
+        }
+    }
+
+    //Elementor Forms Observer
+    var observeElementorForm = function ( form ) {
+        let observer = new MutationObserver( function ( mutations ) {
+
+            for ( let i = 0; i < mutations.length; i++ ) {
+                let mutation = mutations[ i ];
+
+                if ( mutation.type === 'childList' || mutation.type === 'attributes' ) {
+                    if ( $( form ).find( '.elementor-message-success' ).length > 0 ) {
+
+                        let form_id = $( form ).attr( 'id' );
+                        if ( !form_id ) {
+                            form_id = $( form ).find( 'input[name="form_id"]' ).val();
+                        }
+
+                        let sendEventId = null,
+                            disabled_form_action = false;
+                        if ( options.triggerEventTypes.hasOwnProperty( 'elementor_form' ) ) {
+                            $.each( options.triggerEventTypes.elementor_form, function ( eventId, triggers ) {
+                                $.each( triggers, function ( index, trigger ) {
+                                    $.each( trigger.forms, function ( i, value ) {
+                                        if ( value == form_id ) {
+                                            disabled_form_action = trigger.disabled_form_action;
+                                            sendEventId = eventId;
+                                        }
+                                    })
+                                } );
+                            } );
+                        }
+                        if ( sendEventId != null ) {
+                            Utils.fireTriggerEvent( sendEventId );
+                        }
+                        sendFormAction( $( event.target ), form_id, sendEventId, disabled_form_action );
+
+                        observer.disconnect();
+                        break;
+                    }
+                }
+            }
+        } );
+
+        // Start observing the form for changes
+        observer.observe( form, {
+            attributes: true,
+            childList: true,
+            subtree: true
+        } );
+    }
 
 }(jQuery, pysOptions);
 
@@ -5881,6 +6586,7 @@ function getPixelBySlag(slug) {
     switch (slug) {
         case "facebook": return window.pys.Facebook;
         case "ga": return window.pys.Analytics;
+        case "gtm": return window.pys.GTM;
         case "google_ads": return window.pys.GAds;
         case "bing": return window.pys.Bing;
         case "pinterest": return window.pys.Pinterest;
